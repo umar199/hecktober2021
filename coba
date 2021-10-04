@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+ <div class="container">
+</div>
+<script type="text/fragment" id="fragShader">
+  precision highp float;
+
+  uniform vec2 u_resolution;
+  uniform float u_time;
+  uniform vec4 u_mouse;
+  uniform float u_iMouselength;
+  uniform sampler2D s_noise;
+
+  uniform sampler2D b_noise;
+  uniform sampler2D b_render;
+
+  varying vec2 v_uv;
+  
+  const float layers = 10.;
+  float depth = 20.;
+  float t;
+  
+  #define PI 3.14159265359
+  #define TAU PI * 2.
+
+  vec2 getScreenSpace() {
+    vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / min(u_resolution.y, u_resolution.x);
+
+    return uv;
+  }
+  vec2 rot(vec2 p, float a) {
+    float c = cos(a);
+    float s = sin(a);
+    return p * mat2(c, -s, s, c);
+  }
+  float ngon(vec2 uv, float sides) {
+    float split = TAU / sides;
+    vec2 polar = vec2( length(uv), atan(uv.y, uv.x) / split );
+    
+    return polar.x * cos(fract(polar.y) * split - split * .5);
+  }
+  float sdEquilateralTriangle( in vec2 p ) {
+    const float k = sqrt(3.0);
+    p.x = abs(p.x) - 1.0;
+    p.y = p.y + 1.0/k;
+    if( p.x+k*p.y>0.0 ) p = vec2(p.x-k*p.y,-k*p.x-p.y)/2.0;
+    p.x -= clamp( p.x, -2.0, 0.0 );
+    return -length(p)*sign(p.y);
+  }
+  
+  vec2 fold(vec2 p, float ang){
+    vec2 n=vec2(cos(-ang),sin(-ang));
+    p-=2.*min(0.,dot(p,n))*n;
+    return p;
+  }
+  
+  mat2 rot(float x) {
+    return mat2(cos(x), sin(x), -sin(x), cos(x));
+  }
+  vec2 foldRotate(in vec2 p, in float s) {
+    float a = PI / s - atan(p.x, p.y);
+    float n = PI * 2. / s;
+    a = floor(a / n) * n;
+    p *= rot(a);
+    return p;
+  }
+  
+  void main() {
+    vec2 uv = getScreenSpace();
+    
+    uv *= 2.;
+    
+    const float sqrt3 = sqrt(3.0);
+    
+    float t = u_time - 187.5;
+    float st = t * 5.;
+    
+    float field = ngon(rot(uv, PI/6.), 3.);
+    float m;
+
+    vec2 suv = gl_FragCoord.xy / u_resolution - .5;
+   // uv = rot(uv, u_time);
+    suv = rot(suv, -u_time);
+    vec2 _suv = suv;
+    
+    
+    const float angle = (1.0/6.0) * PI;
+    
+    // suv *= 1.1;
+    // suv = abs(suv) - .1;
+    suv = abs(suv) - (smoothstep(1., -1., cos(st)) + .5) * .05;
+    // suv += .5;
+    
+    // Two reflection vectors for symmetry
+    vec2 n1 = vec2(sin(angle), cos(angle));
+    vec2 n2 = vec2(-sin(angle), cos(angle));
+    // Iterating the foldings
+    // uv.y += .25;
+    suv = rot(suv, st*.2);
+    for (int i = 0; i < 3; i++) {
+        // suv = rot(suv, angle*.333);
+        if(i > 0) suv *= 1.05;
+        suv.y -= sqrt3/2.;
+        suv -= n1 * min(0.0, dot(suv, n1)) * 2.0;
+        suv -= n2 * min(0.0, dot(suv, n2)) * 2.0;
+      
+        // uv *= 1.05;
+        // uv.y -= sqrt3/6.;
+        // uv -= n1 * min(0.0, dot(uv, n1)) * 2.0;
+        // uv -= n2 * min(0.0, dot(uv, n2)) * 2.0;
+    }
+    
+    
+    
+    // uv.y -= .03;
+    field = ngon(rot(uv, PI/6.), 3.);
+    uv = rot(uv, -u_time);
+    field = min(abs(uv.x), abs(uv.y));
+    field = min(field, min(abs(abs(uv.x) - 1.), abs(abs(uv.y) - 1.)));
+    m = smoothstep(0.05, 0., field-.02);
+    
+    vec4 tex = texture2D( b_render, suv );
+    // tex.rgb = 1.-tex.rgb;
+    // tex.rgb *= .98;
+    
+    
+    
+    
+    float offsfield = step(suv.x, 1.) * step(suv.y, 1.) * step(0., suv.x) * step(0., suv.y);
+    // tex.rgb = 1. - tex.rgb;
+    tex.rgb *= .999;
+    
+    float i = smoothstep(.003, 0., field - .02);
+    
+    float a = clamp(tex.w + m, 0., 1.);
+    
+    vec3 c = vec3(
+      (smoothstep( 0., .003, abs(field)-.01) -
+      smoothstep( 0., .003, abs(field)-.015)+ 
+      smoothstep(.003, 0., field-.001)) 
+    );
+    
+    gl_FragColor = vec4(mix(tex.rgb, c, m), a);
+    
+  }
+</script>
+<script type="text/fragment" id="renderShader">
+  precision highp float;
+
+  uniform vec2 u_resolution;
+  uniform float u_time;
+  uniform vec4 u_mouse;
+  uniform float u_iMouselength;
+  uniform sampler2D s_noise;
+
+  uniform sampler2D b_render;
+
+  varying vec2 v_uv;
+  
+  void main() {
+    gl_FragColor = texture2D(b_render, gl_FragCoord.xy / u_resolution );
+    // gl_FragColor.rgb = pow(gl_FragColor.rgb+.2, vec3(8.))*.5;
+  }
+</script>
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/js/bootstrap.min.js" integrity="sha384-JZR6Spejh4U02d8jOt6vLEHfe/JQGiRRSQQxSfFWpi1MquVdAyjUar5+76PVCmYl" crossorigin="anonymous"></script>
+  </body>
+</html>
